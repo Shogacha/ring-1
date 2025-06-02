@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AR Примерка Кольца</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    canvas, video { position: absolute; top: 0; left: 0; }
+    #ui {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px;
+    }
+    button {
+      margin: 2px; padding: 5px 10px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <div id="ui">
+    <strong>Выберите палец:</strong><br>
+    <button data-id="4">👍 Большой</button>
+    <button data-id="8">☝ Указательный</button>
+    <button data-id="12">🖖 Средний</button>
+    <button data-id="16">🖐 Безымянный</button>
+    <button data-id="20">🤏 Мизинец</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import { Hands } from 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+    import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+
+    const video = document.getElementById('video');
+    let selectedLandmark = 16; // По умолчанию — безымянный
+
+    // UI выбор пальца
+    document.querySelectorAll("button").forEach(btn => {
+      btn.onclick = () => {
+        selectedLandmark = parseInt(btn.dataset.id);
+      };
+    });
+
+    // Three.js сцена
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.01, 100);
+    const renderer = new THREE.WebGLRenderer({ alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    camera.position.z = 1.5;
+
+    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+    scene.add(light);
+
+    // Загрузка кольца
+    const loader = new GLTFLoader();
+    let ring;
+    loader.load('https://modelviewer.dev/shared-assets/models/Astronaut.glb', (gltf) => {
+      ring = gltf.scene;
+      ring.scale.set(0.05, 0.05, 0.05);
+      scene.add(ring);
+    });
+
+    // MediaPipe Hands
+    const hands = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(onResults);
+
+    const mpCamera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    mpCamera.start();
+
+    // Обработка результатов
+    function onResults(results) {
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0 || !ring) return;
+
+      const landmarks = results.multiHandLandmarks[0];
+
+      const lm = landmarks[selectedLandmark];
+      const base = landmarks[selectedLandmark - 2] || lm;
+
+      const x = (lm.x - 0.5) * 2;
+      const y = -(lm.y - 0.5) * 2;
+      const z = -lm.z;
+
+      ring.position.set(x, y, z);
+
+      // Автоматический масштаб по расстоянию между двумя точками пальца
+      const dx = lm.x - base.x;
+      const dy = lm.y - base.y;
+      const dz = lm.z - base.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const scale = dist * 4; // эмпирически подбирается
+      ring.scale.set(scale, scale, scale);
+
+      ring.lookAt(camera.position); // Повернуть к камере
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
