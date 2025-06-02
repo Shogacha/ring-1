@@ -57,7 +57,7 @@
     // Загрузка кольца
     const loader = new GLTFLoader();
     let ring;
-    loader.load('https://modelviewer.dev/shared-assets/models/Astronaut.glb', (gltf) => {
+    loader.load('ring.glb', (gltf) => {
       ring = gltf.scene;
       ring.scale.set(0.05, 0.05, 0.05);
       scene.add(ring);
